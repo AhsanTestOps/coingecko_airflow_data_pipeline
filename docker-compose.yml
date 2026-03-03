@@ -1,0 +1,309 @@
+# ==============================================================================
+# CRYPTO ETL PIPELINE - DOCKER COMPOSE CONFIGURATION
+# ==============================================================================
+#
+# Description:
+#   Multi-container orchestration for the Crypto ETL Pipeline using:
+#   - PostgreSQL: Data warehouse for cryptocurrency market data
+#   - Redis: Message broker for Airflow task queue (CeleryExecutor ready)
+#   - Apache Airflow: Workflow orchestration (Webserver + Scheduler)
+#
+# Architecture:
+#   ┌─────────────────────────────────────────────────────────────────────┐
+#   │                        CRYPTO ETL PIPELINE                          │
+#   ├─────────────────────────────────────────────────────────────────────┤
+#   │                                                                     │
+#   │  ┌──────────────┐    ┌──────────────┐    ┌──────────────────────┐  │
+#   │  │  PostgreSQL  │    │    Redis     │    │   Airflow Services   │  │
+#   │  │   (Port:     │    │   (Message   │    │  ┌────────────────┐  │  │
+#   │  │    5432)     │◄───│    Broker)   │◄───│  │   Webserver    │  │  │
+#   │  │              │    │              │    │  │  (Port: 8080)  │  │  │
+#   │  │  coingecko   │    └──────────────┘    │  ├────────────────┤  │  │
+#   │  │  database    │                        │  │   Scheduler    │  │  │
+#   │  └──────────────┘                        │  └────────────────┘  │  │
+#   │                                          └──────────────────────┘  │
+#   │                                                                     │
+#   └─────────────────────────────────────────────────────────────────────┘
+#
+# Quick Start:
+#   $ podman-compose up --build -d    # Start all services
+#   $ podman-compose logs -f          # View logs
+#   $ podman-compose down             # Stop all services
+#
+# Access Points:
+#   - Airflow UI: http://localhost:8080 (admin/admin)
+#   - PostgreSQL: localhost:5432 (postgres/1234)
+#
+# Author: Data Engineering Team
+# Version: 1.0.0
+# Last Modified: March 2026
+#
+# ==============================================================================
+
+version: '3.8'
+
+# ==============================================================================
+# SERVICES DEFINITION
+# ==============================================================================
+
+services:
+  
+  # ============================================================================
+  # DATABASE SERVICE: PostgreSQL
+  # ============================================================================
+  # Purpose: Primary data warehouse for storing cryptocurrency market data
+  # Contains two databases:
+  #   1. coingecko - Stores ETL pipeline data (top 100 coins)
+  #   2. airflow   - Airflow metadata database (created by airflow-init)
+  # ============================================================================
+  
+  postgres:
+    image: postgres:15                    # PostgreSQL version 15 (LTS)
+    container_name: crypto-postgres       # Fixed container name for easy reference
+    restart: unless-stopped               # Auto-restart on failure
+    
+    environment:
+      # Database superuser credentials
+      POSTGRES_USER: postgres             # Default superuser username
+      POSTGRES_PASSWORD: "1234"           # Superuser password (change in production!)
+      POSTGRES_DB: coingecko              # Default database for crypto data
+    
+    ports:
+      - "5432:5432"                        # Expose PostgreSQL port to host
+    
+    volumes:
+      # Persist database data across container restarts
+      - postgres_data:/var/lib/postgresql/data
+    
+    networks:
+      - crypto_network                    # Connect to internal network
+    
+    # Health check to ensure database is ready before dependent services start
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================================================
+  # MESSAGE BROKER SERVICE: Redis
+  # ============================================================================
+  # Purpose: In-memory message broker for Airflow task queue
+  # Required for: CeleryExecutor (distributed task execution)
+  # Note: Optional for LocalExecutor but included for future scalability
+  # ============================================================================
+  
+  redis:
+    image: redis:7-alpine                 # Lightweight Redis image
+    container_name: crypto-redis          # Fixed container name
+    restart: unless-stopped
+    
+    networks:
+      - crypto_network
+    
+    # Health check for Redis availability
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================================================
+  # AIRFLOW SERVICE: Web Server
+  # ============================================================================
+  # Purpose: Airflow web interface for:
+  #   - DAG visualization and management
+  #   - Task monitoring and debugging
+  #   - Manual DAG triggers
+  #   - Log viewing
+  # Access: http://localhost:8080 (admin/admin)
+  # ============================================================================
+  
+  airflow-webserver:
+    build: .                              # Build from local Dockerfile
+    container_name: crypto-airflow-web    # Fixed container name
+    command: webserver                    # Start Airflow webserver
+    restart: unless-stopped
+    
+    ports:
+      - "8080:8080"                        # Expose Airflow UI to host
+    
+    environment:
+      # ---- Executor Configuration ----
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor    # Single-node executor (no Celery needed)
+      
+      # ---- Database Connection ----
+      # Format: postgresql+psycopg2://user:password@host:port/database
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://postgres:1234@postgres:5432/airflow
+      
+      # ---- DAG Configuration ----
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"   # New DAGs start paused
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"                 # Don't load example DAGs
+      
+      # ---- API & Security ----
+      AIRFLOW__API__AUTH_BACKENDS: "airflow.api.auth.backend.basic_auth"
+      AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "true"             # Allow config viewing in UI
+      
+      # ---- Webserver Settings ----
+      AIRFLOW__WEBSERVER__RBAC: "true"                      # Enable role-based access
+      AIRFLOW__WEBSERVER__SECRET_KEY: "crypto-etl-secret-key"  # Session secret
+    
+    volumes:
+      # Mount DAG files from host (enables live updates without rebuild)
+      - ./crypto_dag_airflow.py:/opt/airflow/dags/crypto_dag_airflow.py:ro
+      - ./crypto_etl.py:/opt/airflow/dags/crypto_etl.py:ro
+      - ./db.py:/opt/airflow/dags/db.py:ro
+      
+      # Persist Airflow logs
+      - airflow_logs:/opt/airflow/logs
+    
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully   # Wait for DB initialization
+    
+    networks:
+      - crypto_network
+
+  # ============================================================================
+  # AIRFLOW SERVICE: Scheduler
+  # ============================================================================
+  # Purpose: Airflow scheduler for:
+  #   - Monitoring DAGs for scheduled runs
+  #   - Triggering task execution
+  #   - Managing task dependencies
+  #   - Handling retries and failures
+  # Note: Must run alongside webserver for full functionality
+  # ============================================================================
+  
+  airflow-scheduler:
+    build: .                              # Build from local Dockerfile
+    container_name: crypto-airflow-scheduler
+    command: scheduler                    # Start Airflow scheduler
+    restart: unless-stopped
+    
+    environment:
+      # ---- Executor Configuration ----
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      
+      # ---- Database Connection ----
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://postgres:1234@postgres:5432/airflow
+      
+      # ---- DAG Configuration ----
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      
+      # ---- Scheduler Settings ----
+      AIRFLOW__SCHEDULER__DAG_DIR_LIST_INTERVAL: 30        # Scan for new DAGs every 30s
+      AIRFLOW__SCHEDULER__MIN_FILE_PROCESS_INTERVAL: 30    # Re-parse DAGs every 30s
+    
+    volumes:
+      # Mount DAG files (same as webserver for consistency)
+      - ./crypto_dag_airflow.py:/opt/airflow/dags/crypto_dag_airflow.py:ro
+      - ./crypto_etl.py:/opt/airflow/dags/crypto_etl.py:ro
+      - ./db.py:/opt/airflow/dags/db.py:ro
+      
+      # Share logs with webserver
+      - airflow_logs:/opt/airflow/logs
+    
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    
+    networks:
+      - crypto_network
+
+  # ============================================================================
+  # AIRFLOW SERVICE: Database Initialization
+  # ============================================================================
+  # Purpose: One-time initialization service that:
+  #   1. Initializes Airflow metadata database schema
+  #   2. Creates default admin user for web UI access
+  # Note: Runs once and exits - other services wait for completion
+  # ============================================================================
+  
+  airflow-init:
+    build: .                              # Build from local Dockerfile
+    container_name: crypto-airflow-init
+    
+    # Initialization commands
+    command: >
+      bash -c "
+        echo '🚀 Initializing Airflow database...' &&
+        airflow db init &&
+        echo '👤 Creating admin user...' &&
+        airflow users create 
+          --username admin 
+          --firstname Admin 
+          --lastname Admin 
+          --role Admin 
+          --email admin@example.com 
+          --password admin &&
+        echo '✅ Airflow initialization complete!'
+      "
+    
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://postgres:1234@postgres:5432/airflow
+    
+    depends_on:
+      postgres:
+        condition: service_healthy         # Wait for PostgreSQL to be healthy
+    
+    networks:
+      - crypto_network
+
+# ==============================================================================
+# VOLUMES DEFINITION
+# ==============================================================================
+# Persistent storage for data that should survive container restarts
+# ==============================================================================
+
+volumes:
+  # PostgreSQL data directory
+  # Contains: Database files, tables, indexes
+  # Warning: Deleting this volume will erase all stored data!
+  postgres_data:
+    name: crypto-postgres-data
+  
+  # Airflow logs directory
+  # Contains: Task execution logs, scheduler logs
+  # Useful for: Debugging failed tasks, monitoring performance
+  airflow_logs:
+    name: crypto-airflow-logs
+
+# ==============================================================================
+# NETWORKS DEFINITION
+# ==============================================================================
+# Internal network for secure container-to-container communication
+# ==============================================================================
+
+networks:
+  # Bridge network for all crypto ETL services
+  # Enables: DNS-based service discovery (e.g., postgres:5432)
+  # Isolates: Services from other Docker networks
+  crypto_network:
+    name: crypto-etl-network
+    driver: bridge
+
+# ==============================================================================
+# END OF DOCKER COMPOSE CONFIGURATION
+# ==============================================================================
+#
+# USEFUL COMMANDS:
+# ----------------
+# Start all services:          podman-compose up -d --build
+# View logs:                   podman-compose logs -f
+# Stop all services:           podman-compose down
+# Stop and remove volumes:     podman-compose down -v
+# Restart specific service:    podman-compose restart airflow-webserver
+# View running containers:     podman-compose ps
+# Execute command in container: podman-compose exec postgres psql -U postgres
+#
+# TROUBLESHOOTING:
+# ----------------
+# 1. Port already in use:      Change port mapping (e.g., "8081:8080")
+# 2. Database connection:      Check postgres container is healthy
+# 3. DAG not appearing:        Check file permissions and volume mounts
+# 4. Task failures:            Check logs: podman-compose logs airflow-scheduler
+#
+# ==============================================================================
