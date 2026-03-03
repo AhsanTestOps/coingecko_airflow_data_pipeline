@@ -44,7 +44,7 @@ This is a complete **end-to-end Data Engineering project** built from scratch on
 ### 🌐 1. Data Source — CoinGecko Live Market Data
 > Real-time top 100 cryptocurrency data source. Bitcoin at **$68,828.51** (+3.3%), Ethereum at **$2,024.19** (+3.0%), total crypto market cap at **$2.43 Trillion**. This is the exact data our pipeline fetches via the CoinGecko public API.
 
-![CoinGecko Live Data](screenshots/coingecko-live.png)
+![CoinGecko Live Data](coingecko.JPG)
 
 ---
 
@@ -53,27 +53,26 @@ This is a complete **end-to-end Data Engineering project** built from scratch on
 > - **`airflow`** → `docker.io/apache/airflow:2.9.2` | PORT **8080** | Uptime: 36 minutes ✅
 > - **`crypto-postgres`** → `docker.io/library/postgres:15` | PORT **5432** | Uptime: 1 hour ✅
 
-![Podman Containers Running](screenshots/podman-containers.png)
+![Podman Containers Running](podman.jpeg)
 
 ---
 
 ### ✈️ 3. Airflow UI — DAG Live and Active
 > `crypto_coingecko_pipeline` DAG is **enabled and running**, scheduled `@daily`, last triggered on `2026-03-03 01:23:11 UTC`. Tagged with `crypto` and `etl`. Active: **1** | Running: **0** | Failed: **0**
 
-![Airflow DAG Dashboard](screenshots/airflow-dag-list.png)
+![Airflow DAG Dashboard](airflow.jpeg)
 
 ---
 
 ### ✅ 4. Pipeline Execution — 2 Successful Runs
-> Full DAG execution summary from Airflow:
-> - **Total Runs Displayed:** 2
-> - **Total Success: 2** ✅ (100% success rate)
+> Full DAG execution summary:
+> - **Total Runs:** 2 | **Success Rate:** 100% ✅
 > - **First Run:** `2026-03-03, 01:23:10 UTC`
 > - **Last Run:** `2026-03-03, 01:23:12 UTC`
-> - **Max Run Duration:** 5 seconds | **Mean:** 4 seconds | **Min:** 2 seconds
-> - Both tasks `fetch_top100_from_coingecko` and `store_to_postgresql` visible as green bars in the Gantt chart
+> - **Max Duration:** 5s | **Mean:** 4s | **Min:** 2s
+> - Both tasks visible as green bars in the Gantt chart ✅
 
-![Airflow Successful Pipeline](screenshots/airflow-success.png)
+![Airflow Successful Pipeline](airflow_graph.jpeg)
 
 ---
 
@@ -88,13 +87,13 @@ This is a complete **end-to-end Data Engineering project** built from scratch on
 │   ┌──────────────────┐    ┌───────────────────────┐   ┌──────────────┐  │
 │   │  CoinGecko API   │    │    Apache Airflow      │   │  PostgreSQL  │  │
 │   │      v3          │───▶│       2.9.2            │──▶│      15      │  │
-│   │                  │    │                       │   │              │  │
-│   │  /coins/markets  │    │  DAG: @daily          │   │  DB:         │  │
-│   │  ?vs_currency=usd│    │  Executor: Local      │   │  coingecko   │  │
-│   │  &per_page=100   │    │  Retries: 1 (5min)    │   │              │  │
-│   │                  │    │  Task1 → Task2        │   │  Table:      │  │
-│   │  Live Market Cap │    │                       │   │  top100      │  │
-│   │  $2.43 Trillion  │    │  http://localhost:8080 │   │  :5432       │  │
+│   │                  │    │                        │   │              │  │
+│   │  /coins/markets  │    │  DAG: @daily           │   │  DB:         │  │
+│   │  ?vs_currency=usd│    │  Executor: Local       │   │  coingecko   │  │
+│   │  &per_page=100   │    │  Retries: 1 (5min)     │   │              │  │
+│   │                  │    │  Task1 → Task2         │   │  Table:      │  │
+│   │  $2.43T Market   │    │                        │   │  top100      │  │
+│   │  Cap (live)      │    │  localhost:8080        │   │  :5432       │  │
 │   └──────────────────┘    └───────────────────────┘   └──────────────┘  │
 │                                                                          │
 ├──────────────────────────────────────────────────────────────────────────┤
@@ -170,11 +169,10 @@ coingecko_airflow_data_pipeline/
 ├── 📄 docker-compose.yml        # Alternative multi-container orchestration
 ├── 📄 requirements.txt          # Python package dependencies
 ├── 📄 coingecko_top100.csv      # Sample pipeline output data
-├── 📂 screenshots/
-│   ├── coingecko-live.png       # CoinGecko live market data
-│   ├── podman-containers.png    # Podman Desktop showing both containers
-│   ├── airflow-dag-list.png     # Airflow UI with active DAG
-│   └── airflow-success.png      # Successful DAG run details
+├── 🖼️ coingecko.JPG             # Screenshot: CoinGecko live market data
+├── 🖼️ podman.jpeg               # Screenshot: Podman Desktop containers
+├── 🖼️ airflow.jpeg              # Screenshot: Airflow DAG dashboard
+├── 🖼️ airflow_graph.jpeg        # Screenshot: Successful pipeline runs
 └── 📄 README.md                 # This file
 ```
 
@@ -388,7 +386,7 @@ This project is licensed under the **MIT License** — free to use, modify, and 
 
 ## 🙏 Acknowledgments
 
-- [CoinGecko](https://www.coingecko.com/) — free public cryptocurrency market API (18,638 coins tracked)
+- [CoinGecko](https://www.coingecko.com/) — free public cryptocurrency API (18,638+ coins tracked)
 - [Apache Airflow](https://airflow.apache.org/) — open-source workflow orchestration platform
 - [Podman](https://podman.io/) — daemonless, rootless, secure container engine
 
